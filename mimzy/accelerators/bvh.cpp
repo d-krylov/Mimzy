@@ -2,8 +2,11 @@
 #include <algorithm>
 #include <iostream>
 #include <numeric>
+#include <stack>
 
 namespace Mimzy {
+
+constexpr auto ROOT_INDEX = 0;
 
 BVH::BVH(std::span<const Triangle> triangles) : triangles_(triangles.begin(), triangles.end()) {
   auto n = triangles_.size();
@@ -32,13 +35,13 @@ void BVH::UpdateNodeBounds(uint32_t node_index) {
 
 void BVH::RecursiveBuild(uint32_t node_index) {
   auto &node = nodes_[node_index];
-  if (node.primitive_count_ <= 2) return;
+  if (node.primitive_count_ <= 10) return;
   auto extent = node.bounding_box_.GetExtent();
   int32_t max_axis;
-  FloatType split_position;
+  Float split_position;
   FindBestSplitPlane(node, max_axis, split_position);
-  //auto max_axis = node.bounding_box_.MaximumExtent();
-  //auto split_position = node.bounding_box_.min_[max_axis] + extent[max_axis] * 0.5f;
+  // auto max_axis = node.bounding_box_.MaximumExtent();
+  // auto split_position = node.bounding_box_.min_[max_axis] + extent[max_axis] * 0.5f;
   auto begin = triangles_indices_.begin() + node.primitive_start_;
   auto end = begin + node.primitive_count_;
   auto middle = std::partition(begin, end, [&](auto index) {
@@ -72,11 +75,11 @@ void BVH::Print() {
   }
 }
 
-float BVH::FindBestSplitPlane(BVHNode &node, int &axis, FloatType &split_position) {
-  float best_cost = std::numeric_limits<FloatType>::max();
+Float BVH::FindBestSplitPlane(BVHNode &node, int &axis, Float &split_position) {
+  float best_cost = std::numeric_limits<Float>::max();
   for (auto a = 0; a < 3; a++) {
-    auto bounds_min = std::numeric_limits<FloatType>::max();
-    auto bounds_max = std::numeric_limits<FloatType>::lowest();
+    auto bounds_min = std::numeric_limits<Float>::max();
+    auto bounds_max = std::numeric_limits<Float>::lowest();
     for (auto i = 0; i < node.primitive_count_; i++) {
       auto triangle_index = triangles_indices_[node.left_node_index_ + i];
       auto centroid = triangles_[triangle_index].GetCentroid();
@@ -98,8 +101,8 @@ float BVH::FindBestSplitPlane(BVHNode &node, int &axis, FloatType &split_positio
       bins[bin_index].bounding_box_.Expand(triangle.GetBoundingBox());
     }
 
-    std::vector<FloatType> left_area(bin_count_ - 1);
-    std::vector<FloatType> right_area(bin_count_ - 1);
+    std::vector<Float> left_area(bin_count_ - 1);
+    std::vector<Float> right_area(bin_count_ - 1);
     std::vector<uint32_t> left_count(bin_count_ - 1);
     std::vector<uint32_t> right_count(bin_count_ - 1);
 
@@ -133,24 +136,54 @@ float BVH::FindBestSplitPlane(BVHNode &node, int &axis, FloatType &split_positio
   return best_cost;
 }
 
-bool BVH::Intersect(Ray &ray, uint32_t node_index) {
-  bool b = false;
-  auto &node = nodes_[node_index];
-  if (node.bounding_box_.Intersect(ray) == false) return false;
-  if (node.IsLeaf()) {
-    for (uint32_t i = 0; i < node.primitive_count_; i++) {
-      auto triangle_index = triangles_indices_[node.primitive_start_ + i];
-      auto &triangle = triangles_[triangle_index];
-      double t;
-      if (triangle.Intersect(ray, t)) return true;
+std::optional<Hit> BVH::Intersect(Ray &ray) {
+  std::stack<BVHNode *> stack;
+  auto time = MIMZY_INFINITY;
+  auto index = 0;
+  auto node = &nodes_[ROOT_INDEX];
+  while (true) {
+    if (node->IsLeaf()) {
+      for (auto i = 0; i < node->primitive_count_; i++) {
+        const auto &triangle = triangles_[triangles_indices_[node->left_node_index_ + i]];
+        auto t = triangle.Intersect(ray);
+        if (t.has_value() && t.value() < time) {
+          time = std::min(time, t.value());
+          index = i;
+        }
+      }
+      if (stack.empty()) break;
+      node = stack.top();
+      stack.pop();
+      continue;
     }
-  } else {
-    b |= Intersect(ray, node.left_node_index_);
-    b |= Intersect(ray, node.left_node_index_ + 1);
-  }
-  return b;
-}
+    auto c1 = &nodes_[node->left_node_index_ + 0];
+    auto c2 = &nodes_[node->left_node_index_ + 1];
 
-bool BVH::Intersect(Ray &ray) { return Intersect(ray, 0); }
+    auto d1 = c1->bounding_box_.Intersect(ray);
+    auto d2 = c2->bounding_box_.Intersect(ray);
+
+    if (d1 > d2) {
+      std::swap(d1, d2);
+      std::swap(c1, c2);
+    }
+
+    if (d1 == MIMZY_INFINITY) {
+      if (stack.empty()) break;
+      node = stack.top();
+      stack.pop();
+    } else {
+      node = c1;
+      if (d2 != MIMZY_INFINITY) {
+        stack.push(c2);
+      }
+    }
+  }
+
+  if (time == MIMZY_INFINITY) return std::nullopt;
+
+  auto &triangle = triangles_[triangles_indices_[index]];
+
+  return Hit(ray(time), triangle.GetNormal(), triangles_indices_[index]);
+}
 
 } // namespace Mimzy

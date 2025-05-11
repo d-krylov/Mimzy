@@ -7,6 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 
 include(cmake/clang_format.cmake)
+include(cmake/libraries.cmake)
+
+FetchContent_MakeAvailable(Yoth)
 
 if(${PROJECT_IS_TOP_LEVEL})
 

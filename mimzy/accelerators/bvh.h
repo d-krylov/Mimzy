@@ -17,7 +17,7 @@ public:
 
   void RecursiveBuild(uint32_t node_index);
 
-  bool Intersect(Ray &ray);
+  std::optional<Hit> Intersect(Ray &ray);
 
   void Print();
 
@@ -37,9 +37,8 @@ protected:
     uint32_t primitive_count_{0};
   };
 
-  bool Intersect(Ray &ray, uint32_t node_index);
   void UpdateNodeBounds(uint32_t node_index);
-  float FindBestSplitPlane(BVHNode &node, int &axis, FloatType &split_position);
+  Float FindBestSplitPlane(BVHNode &node, int &axis, Float &split_position);
 
 private:
   std::vector<Triangle> triangles_;
