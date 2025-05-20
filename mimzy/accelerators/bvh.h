@@ -7,7 +7,11 @@
 
 namespace Mimzy {
 
-enum class SplitMethod { SAH, HLBVH, MIDDLE };
+enum class SplitMethod {
+  SAH,
+  HLBVH,
+  MIDDLE
+};
 
 class BVH {
 public:
@@ -17,19 +21,16 @@ public:
 
   void RecursiveBuild(uint32_t node_index);
 
-  std::optional<Hit> Intersect(Ray &ray);
-
-  void Print();
+  std::optional<Hit> Intersect(const Ray &ray);
 
 protected:
-  struct BVHNode {
-    bool IsLeaf() const { return primitive_count_ > 0; }
+  struct alignas(32) BVHNode {
+    auto IsLeaf() const {
+      return primitive_count_ > 0;
+    }
     BoundingBox bounding_box_;
     uint32_t primitive_count_{0};
-    union {
-      uint32_t left_node_index_{0};
-      uint32_t primitive_start_;
-    };
+    uint32_t primitive_start_{0}; // Or left node index if it's not leaf
   };
 
   struct Bin {
@@ -39,6 +40,8 @@ protected:
 
   void UpdateNodeBounds(uint32_t node_index);
   Float FindBestSplitPlane(BVHNode &node, int &axis, Float &split_position);
+  BoundingBox GetBounds(const BVHNode &node) const;
+  std::vector<Bin> GetBins(const BVHNode &node, const Yoth::Vector3i bin_indices) const;
 
 private:
   std::vector<Triangle> triangles_;

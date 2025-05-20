@@ -14,13 +14,14 @@ public:
 
   void Expand(const Point3f &p);
   void Expand(const BoundingBox &other);
-  Float Intersect(const Ray &ray) const;
 
   Vector3f GetExtent() const;
-
   uint32_t MaximumExtent() const;
   Float GetSurfaceArea() const;
   Float GetVolume() const;
+
+  std::pair<Float, Float> Intersect(const Ray &ray) const;
+  std::pair<Float, Float> GetSurfaceArea(Float offset, uint32_t axis) const;
 
   std::vector<Point3f> GetBox() const;
 

@@ -8,12 +8,13 @@ namespace Mimzy {
 struct Hit {
   Point3f position_;
   Normal3f normal_;
-  uint32_t index_;
 };
 
 class Ray {
 public:
-  Point3f operator()(Float t) { return origin_ + direction_ * t; }
+  Point3f operator()(Float t) const {
+    return origin_ + direction_ * t;
+  }
 
 public:
   Point3f origin_;

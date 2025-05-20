@@ -7,7 +7,7 @@ namespace Mimzy {
 
 class Triangle {
 public:
-  Triangle(Point3f p0, Point3f p1, Point3f p2) : p0_(p0), p1_(p1), p2_(p2) {}
+  Triangle(Point3f p0, Point3f p1, Point3f p2);
 
   BoundingBox GetBoundingBox() const;
   Point3f GetCentroid() const;

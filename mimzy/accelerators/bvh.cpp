@@ -1,8 +1,8 @@
 #include "bvh.h"
+#include "mimzy/core/stack.h"
 #include <algorithm>
 #include <iostream>
 #include <numeric>
-#include <stack>
 
 namespace Mimzy {
 
@@ -16,18 +16,17 @@ BVH::BVH(std::span<const Triangle> triangles) : triangles_(triangles.begin(), tr
 }
 
 void BVH::Build() {
-  auto &root = nodes_[0];
-  root.left_node_index_ = 0;
-  root.primitive_start_ = 0;
+  auto &root = nodes_[ROOT_INDEX];
+  root.primitive_start_ = ROOT_INDEX;
   root.primitive_count_ = triangles_.size();
-  UpdateNodeBounds(0);
-  RecursiveBuild(0);
+  UpdateNodeBounds(ROOT_INDEX);
+  RecursiveBuild(ROOT_INDEX);
 }
 
 void BVH::UpdateNodeBounds(uint32_t node_index) {
   auto &node = nodes_[node_index];
-  for (uint32_t start = node.primitive_start_, i = 0; i < node.primitive_count_; i++) {
-    auto triangle_index = triangles_indices_[start + i];
+  for (auto i = 0; i < node.primitive_count_; i++) {
+    auto triangle_index = triangles_indices_[node.primitive_start_ + i];
     auto &triangle = triangles_[triangle_index];
     node.bounding_box_.Expand(triangle.GetBoundingBox());
   }
@@ -59,7 +58,7 @@ void BVH::RecursiveBuild(uint32_t node_index) {
   nodes_[right_child_index].primitive_start_ = std::distance(triangles_indices_.begin(), middle);
   nodes_[right_child_index].primitive_count_ = node.primitive_count_ - left_count;
 
-  node.left_node_index_ = left_child_index;
+  node.primitive_start_ = left_child_index;
   node.primitive_count_ = 0;
 
   UpdateNodeBounds(left_child_index);
@@ -69,30 +68,35 @@ void BVH::RecursiveBuild(uint32_t node_index) {
   RecursiveBuild(right_child_index);
 }
 
-void BVH::Print() {
-  for (auto &node : nodes_) {
-    std::cout << node.primitive_start_ << " " << node.primitive_count_ << " " << node.left_node_index_ << std::endl;
+BoundingBox BVH::GetBounds(const BVHNode &node) const {
+  BoundingBox bounding_box;
+  for (auto i = 0; i < node.primitive_count_; i++) {
+    auto triangle_index = triangles_indices_[node.primitive_start_ + i];
+    auto centroid = triangles_[triangle_index].GetCentroid();
+    bounding_box.Expand(centroid);
   }
+  return bounding_box;
+}
+
+std::vector<BVH::Bin> BVH::GetBins(const BVHNode &node, const Yoth::Vector3i bounds_min) const {
 }
 
 Float BVH::FindBestSplitPlane(BVHNode &node, int &axis, Float &split_position) {
-  float best_cost = std::numeric_limits<Float>::max();
+  auto best_cost = FLOAT_MAX;
+
+  auto bounds = GetBounds(node);
+
   for (auto a = 0; a < 3; a++) {
-    auto bounds_min = std::numeric_limits<Float>::max();
-    auto bounds_max = std::numeric_limits<Float>::lowest();
-    for (auto i = 0; i < node.primitive_count_; i++) {
-      auto triangle_index = triangles_indices_[node.left_node_index_ + i];
-      auto centroid = triangles_[triangle_index].GetCentroid();
-      bounds_min = std::min(bounds_min, centroid[a]);
-      bounds_max = std::max(bounds_max, centroid[a]);
-    }
+    auto bounds_min = bounds.min_[a];
+    auto bounds_max = bounds.max_[a];
+
     if (bounds_min == bounds_max) continue;
 
     std::vector<Bin> bins(bin_count_);
     auto scale = bin_count_ / (bounds_max - bounds_min);
 
     for (auto i = 0; i < node.primitive_count_; i++) {
-      auto triangle_index = triangles_indices_[node.left_node_index_ + i];
+      auto triangle_index = triangles_indices_[node.primitive_start_ + i];
       auto &triangle = triangles_[triangle_index];
       auto centroid = triangle.GetCentroid();
       auto bin_index = std::min(bin_count_ - 1, (uint32_t)((centroid[a] - bounds_min) * scale));
@@ -136,28 +140,27 @@ Float BVH::FindBestSplitPlane(BVHNode &node, int &axis, Float &split_position) {
   return best_cost;
 }
 
-std::optional<Hit> BVH::Intersect(Ray &ray) {
-  std::stack<BVHNode *> stack;
-  auto time = MIMZY_INFINITY;
+std::optional<Hit> BVH::Intersect(const Ray &ray) {
+  Stack<BVHNode *, 64> stack;
+  auto time = FLOAT_INFINITY;
   auto index = 0;
   auto node = &nodes_[ROOT_INDEX];
   while (true) {
     if (node->IsLeaf()) {
       for (auto i = 0; i < node->primitive_count_; i++) {
-        const auto &triangle = triangles_[triangles_indices_[node->left_node_index_ + i]];
+        const auto &triangle = triangles_[triangles_indices_[node->primitive_start_ + i]];
         auto t = triangle.Intersect(ray);
         if (t.has_value() && t.value() < time) {
           time = std::min(time, t.value());
-          index = i;
+          index = node->primitive_start_ + i;
         }
       }
-      if (stack.empty()) break;
-      node = stack.top();
-      stack.pop();
+      if (stack.Empty()) break;
+      node = stack.Pop();
       continue;
     }
-    auto c1 = &nodes_[node->left_node_index_ + 0];
-    auto c2 = &nodes_[node->left_node_index_ + 1];
+    auto c1 = &nodes_[node->primitive_start_ + 0];
+    auto c2 = &nodes_[node->primitive_start_ + 1];
 
     auto d1 = c1->bounding_box_.Intersect(ray);
     auto d2 = c2->bounding_box_.Intersect(ray);
@@ -167,23 +170,22 @@ std::optional<Hit> BVH::Intersect(Ray &ray) {
       std::swap(c1, c2);
     }
 
-    if (d1 == MIMZY_INFINITY) {
-      if (stack.empty()) break;
-      node = stack.top();
-      stack.pop();
+    if (d1.first == FLOAT_INFINITY) {
+      if (stack.Empty()) break;
+      node = stack.Pop();
     } else {
       node = c1;
-      if (d2 != MIMZY_INFINITY) {
-        stack.push(c2);
+      if (d2.first != FLOAT_INFINITY) {
+        stack.Push(c2);
       }
     }
   }
 
-  if (time == MIMZY_INFINITY) return std::nullopt;
+  if (time == FLOAT_INFINITY) return std::nullopt;
 
   auto &triangle = triangles_[triangles_indices_[index]];
 
-  return Hit(ray(time), triangle.GetNormal(), triangles_indices_[index]);
+  return Hit(ray(time), triangle.GetNormal());
 }
 
 } // namespace Mimzy

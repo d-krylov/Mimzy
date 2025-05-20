@@ -2,6 +2,13 @@
 
 namespace Mimzy {
 
+Triangle::Triangle(Point3f p0, Point3f p1, Point3f p2) : p0_(p0), p1_(p1), p2_(p2) {
+}
+
+Point3f Triangle::GetCentroid() const {
+  return (p0_ + p1_ + p2_) / 3;
+}
+
 BoundingBox Triangle::GetBoundingBox() const {
   auto min = Min(p0_, Min(p1_, p2_));
   auto max = Max(p0_, Max(p1_, p2_));
@@ -13,8 +20,6 @@ Normal3f Triangle::GetNormal() const {
   normal = Yoth::Normalize(normal);
   return Normal3f(normal.x, normal.y, normal.z);
 }
-
-Point3f Triangle::GetCentroid() const { return (p0_ + p1_ + p2_) / 3; }
 
 std::optional<Float> Triangle::Intersect(const Ray &ray) const {
   auto edge1 = p1_ - p0_;

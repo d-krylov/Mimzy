@@ -1,6 +1,7 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "mimzy/common/mimzy.h"
 #include "tiny_obj_loader.h"
+#include "tools/tools.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -68,9 +69,13 @@ int main(int argc, char **argv) {
     triangles.emplace_back(p0, p1, p2);
   }
 
-  Mimzy::BVH bvh(triangles);
+  // Mimzy::BVH bvh(triangles);
 
-  bvh.Build();
+  // bvh.Build();
+
+  Mimzy::KDTree kdtree(triangles);
+
+  kdtree.Build(8);
 
   auto width = 800;
   auto height = 600;
@@ -78,7 +83,7 @@ int main(int argc, char **argv) {
   std::vector<uint32_t> image(width * height);
 
   Mimzy::Ray ray;
-  ray.origin_ = Mimzy::Point3f(0.0f, 2.0f, 5.0f);
+  ray.origin_ = Mimzy::Point3f(0.0f, 0.0f, 9.0f);
 
   for (auto x = 0; x < width; x++) {
     for (auto y = 0; y < height; y++) {
@@ -86,11 +91,11 @@ int main(int argc, char **argv) {
       Mimzy::Point2f resolution(width, height);
       auto uv = 2.0f * position / resolution - Mimzy::Point2f(1.0f);
       ray.direction_ = Yoth::Normalize(Mimzy::Vector3f(uv.x, -uv.y, -1.0));
-      auto b = bvh.Intersect(ray);
+      auto b = kdtree.Intersect(ray);
       if (b.has_value()) {
 
-        auto cos = Dot(-b.value().normal_, Yoth::Normalize(Mimzy::Vector3f(1.0, 1.0, 10.0)));
-        auto color = std::max(cos, 0.0) * Mimzy::Vector3f(0.5);
+        auto cos = Dot(b.value().normal_, Yoth::Normalize(Mimzy::Vector3f(10.0, 1.0, 10.0)));
+        auto color = Mimzy::Vector3f(0.2) + std::max(cos, 0.0) * Mimzy::Vector3f(0.5);
 
         uint8_t r = static_cast<uint8_t>(color.x * 255.0);
         uint8_t g = static_cast<uint8_t>(color.y * 255.0);
@@ -101,7 +106,15 @@ int main(int argc, char **argv) {
     }
   }
 
-  WriteImage(width, height, image);
+  Renderer renderer(800, 600);
+
+  while (renderer.ShouldClose() == false) {
+    renderer.PollEvent();
+
+    renderer.Clear();
+    renderer.DrawImage(image);
+    renderer.Present();
+  }
 
   return 0;
 }

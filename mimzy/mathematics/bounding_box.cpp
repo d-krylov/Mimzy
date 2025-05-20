@@ -31,7 +31,18 @@ Float BoundingBox::GetSurfaceArea() const {
   return 2 * (extent.x * extent.y + extent.x * extent.z + extent.y * extent.z);
 }
 
-Vector3f BoundingBox::GetExtent() const { return max_ - min_; }
+std::pair<Float, Float> BoundingBox::GetSurfaceArea(Float offset, uint32_t axis) const {
+  auto d = GetExtent();
+  d[axis] = offset - min_[axis];
+  auto below_area = 2 * (d.x * d.y + d.y * d.z + d.z * d.x);
+  d[axis] = max_[axis] - offset;
+  auto above_area = 2 * (d.x * d.y + d.y * d.z + d.z * d.x);
+  return std::make_pair(below_area, above_area);
+}
+
+Vector3f BoundingBox::GetExtent() const {
+  return max_ - min_;
+}
 
 uint32_t BoundingBox::MaximumExtent() const {
   auto extent = GetExtent();
@@ -45,7 +56,7 @@ Float BoundingBox::GetVolume() const {
   return extent.x * extent.y * extent.z;
 }
 
-Float BoundingBox::Intersect(const Ray &ray) const {
+std::pair<Float, Float> BoundingBox::Intersect(const Ray &ray) const {
   auto t0 = (min_ - ray.origin_) / ray.direction_;
   auto t1 = (max_ - ray.origin_) / ray.direction_;
   auto min_vec = Min(t0, t1);
@@ -54,7 +65,9 @@ Float BoundingBox::Intersect(const Ray &ray) const {
   auto t_min = std::max({min_vec.x, min_vec.y, min_vec.z});
   auto t_max = std::min({max_vec.x, max_vec.y, max_vec.z});
 
-  return (t_max >= t_min && t_max > 0) ? t_min : MIMZY_INFINITY;
+  if (t_min > t_max || t_max < 0.0) return std::make_pair(FLOAT_INFINITY, FLOAT_INFINITY);
+
+  return std::make_pair(t_min, t_max);
 }
 
 // clang-format off
@@ -65,6 +78,7 @@ std::vector<Point3f> GetBoxVertices(const Point3f &min, const Point3f max) {
 }
 // clang-format on
 
-std::vector<Point3f> BoundingBox::GetBox() const {}
+std::vector<Point3f> BoundingBox::GetBox() const {
+}
 
 } // namespace Mimzy
